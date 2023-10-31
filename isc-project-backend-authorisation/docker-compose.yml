@@ -1,0 +1,84 @@
+version: '3.5'
+
+x-common-variables: &env
+  _JAVA_OPTIONS: -Xmx512m -Xms256m
+  SPRING_PROFILES_ACTIVE: ${PROFILES:-default}
+  SPRING_CONFIG_IMPORT: configserver:http://${CONFIG_SERVER_USERNAME:-isc}:${CONFIG_SERVER_PASSWORD:-4RKsJQfuvvuG}@config:8888/
+
+services:
+  logstash:
+    image: docker.elastic.co/logstash/logstash:7.11.0
+    container_name: logstash
+    volumes:
+      - ./logstash/pipeline/logstash.conf:${LOGSTASH_CONFIG:-/usr/share/logstash/pipeline/logstash.conf:ro}
+      - logs:/logs
+    environment:
+      LS_JAVA_OPTS: "-Xmx256m -Xms256m"
+
+    restart: always
+    ports:
+      - "4560:4560"
+      - "9600:9600"
+    links:
+      - elasticsearch
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.11.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+    ports:
+      - 9200:9200
+    restart: always
+
+  # App authentication service
+  authentication:
+    image: ${DOCKER_REPOSITORY}/isc/authentication:latest #name immage docker
+    container_name: authentication
+    networks:
+      - service
+      - backend
+      - monitoring
+    restart: always #reboot continuous of the microservice
+      #depends_on:
+    # - db_authentication # This service depends on db. Starts the CONTAINER of the db then the microservice
+    # - eureka # This service depends on the discoveryServer. Starts CONTAINER of the discoveryServer then the microservice
+    environment: # Overrwrites the environment variables to the service(application.properties)
+      EUREKA_CLIENT_SERVICE-URL_DEFAULTZONE: http://isc:4RKsJQfuvvuG@eureka:8761/eureka #connected to the discoveryServer network
+      SPRING_DATASOURCE_URL: jdbc:mysql://db_isc:3306/isc?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=UTC&useLegacyDatetimeCode=false&allowPublicKeyRetrieval=true #connected to the network of the db1
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+      <<: *env
+    healthcheck:
+      test: busybox wget -qO - http://localhost:8081/actuator/health | grep "UP" || exit 1
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - logs:/logs
+      #depends_on:
+      # isc:
+      #  condition: service_healthy
+
+# Volumes
+volumes:
+  elasticsearch-data:
+    driver: local
+  logs:
+
+
+networks:
+  backend:
+    external:
+      name: isc_backend
+  service:
+    external:
+      name: isc_backend_authentication
+  monitoring:
+    external:
+      name: isc_monitoring
+#
+#docker-compose up
+#docker-compose down (stop all the application)
+#docker exec -ti nameContainer /bin/bash
+#docker-compose down --remove-orphans -v (remove every single image, container and volume)

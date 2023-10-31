@@ -1,0 +1,7 @@
+spring:
+  application:
+    name: authentication
+    description: This service contains all the API for the management, registration and authentication of users.
+    version: @project.version@
+  config:
+    import: ${SPRING_CONFIG_IMPORT:configserver:http://isc:4RKsJQfuvvuG@localhost:8888/}
